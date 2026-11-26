@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use these proofs or colourings, please cite the paper below."
+type: software
+title: "Improving the stepping-up lemma for hypergraph Ramsey numbers: formal proofs and colourings"
+authors:
+  - family-names: "Lysenstøen"
+    given-names: "Christian"
+    affiliation: "University of Inland Norway"
+license:
+  - MIT
+  - CC-BY-4.0
+repository-code: "https://github.com/Chrislysen/stepping-up-ramsey"
+preferred-citation:
+  type: article
+  title: "Improving the stepping-up lemma for hypergraph Ramsey numbers, with proofs verified in Lean"
+  authors:
+    - family-names: "Lysenstøen"
+      given-names: "Christian"
+      affiliation: "University of Inland Norway"
+  year: 2026
+  notes: "arXiv id to be added"

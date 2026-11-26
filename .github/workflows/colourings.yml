@@ -1,0 +1,42 @@
+name: Colouring checks
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: "R(5,5;3) >= 101: search the colouring of Z_100 for a forbidden set"
+        working-directory: colourings
+        run: python verify.py R553_100_points.csv 5 5
+
+      - name: "R(5,5;3) >= 101: rebuild the colouring from its group and representatives"
+        working-directory: colourings
+        run: python rebuild_from_rule.py R553_100_points.json
+
+      - name: "R(5,7;4) >= 859: check through 0, 1 and infinity (verify_projective.cpp)"
+        working-directory: colourings
+        run: python3 check_projective.py
+
+      - name: "R(5,7;4) >= 859: check with less symmetry (verify_affine.c)"
+        working-directory: colourings
+        run: |
+          gcc -O3 -pthread -o verify_affine verify_affine.c
+          python3 -c "import json; open('tau858.txt', 'w').write(json.load(open('R574_858_points_rule.json'))['table'])"
+          ./verify_affine 857 tau858.txt 5 7 4

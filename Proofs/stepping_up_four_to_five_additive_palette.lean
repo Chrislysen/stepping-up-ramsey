@@ -1,0 +1,851 @@
+import Proofs.Defs
+
+set_option maxHeartbeats 0
+set_option maxRecDepth 4096
+
+open Classical
+
+namespace AdditiveFive
+
+lemma ft : (false : Bool) ≠ true := by decide
+
+lemma bool_cases (b : Bool) : b = false ∨ b = true := by
+  cases b
+  · exact Or.inl rfl
+  · exact Or.inr rfl
+
+lemma bool_eq : ∀ a b c : Bool, a ≠ b → c ≠ b → a = c := by
+  intro a b c
+  cases a <;> cases b <;> cases c <;> decide
+
+lemma bool_ne : ∀ a b : Bool, a ≠ b →
+    (a = false ∧ b = true) ∨ (a = true ∧ b = false) := by
+  intro a b
+  cases a <;> cases b <;> decide
+
+lemma extend {V : Type*} [DecidableEq V]
+    (S K : Finset V) (n : ℕ)
+    (hSK : S ⊆ K) (hSn : S.card ≤ n) (hnK : n ≤ K.card) :
+    ∃ A, S ⊆ A ∧ A ⊆ K ∧ A.card = n := by
+  have he := Finset.card_sdiff_add_card_eq_card hSK
+  obtain ⟨R, hR, hRc⟩ :=
+    Finset.exists_subset_card_eq
+      (show n - S.card ≤ (K \ S).card by omega)
+  have hd : Disjoint S R := by
+    rw [Finset.disjoint_left]
+    intro v hv hw
+    exact (Finset.mem_sdiff.mp (hR hw)).2 hv
+  refine ⟨S ∪ R, fun v hv => Finset.mem_union_left _ hv,
+    Finset.union_subset hSK
+      (fun v hv => (Finset.mem_sdiff.mp (hR hv)).1), ?_⟩
+  rw [Finset.card_union_of_disjoint hd]
+  omega
+
+lemma two_points {V : Type*} [DecidableEq V]
+    (K : Finset V) (hK : 2 ≤ K.card) :
+    ∃ u ∈ K, ∃ v ∈ K, u ≠ v := by
+  obtain ⟨T, hT, hTc⟩ := Finset.exists_subset_card_eq hK
+  obtain ⟨u, v, huv, rfl⟩ := Finset.card_eq_two.mp hTc
+  exact ⟨u, hT (Finset.mem_insert_self _ _), v,
+    hT (Finset.mem_insert_of_mem (Finset.mem_singleton_self _)), huv⟩
+
+def Above {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) (x : X) : Prop :=
+  ∀ u ∈ A, ∀ v ∈ A, ∀ y, x < y → u y = v y
+
+def Split {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) (x : X) : Prop :=
+  Above A x ∧ ∃ u ∈ A, ∃ v ∈ A, u x ≠ v x
+
+def side {X : Type*}
+    (A : Finset (X → Bool)) (x : X) (b : Bool) :
+    Finset (X → Bool) :=
+  A.filter (fun v => v x = b)
+
+def Balanced {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) : Prop :=
+  ∃ x : X, Above A x ∧
+    2 ≤ (side A x false).card ∧
+    2 ≤ (side A x true).card
+
+def Cat {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) : Prop :=
+  ∀ B : Finset (X → Bool), B ⊆ A → B.card = 4 → ¬ Balanced B
+
+lemma mem_side {X : Type*}
+    (A : Finset (X → Bool)) (x : X) (b : Bool) (v : X → Bool) :
+    v ∈ side A x b ↔ v ∈ A ∧ v x = b :=
+  Finset.mem_filter
+
+lemma side_subset {X : Type*}
+    (A : Finset (X → Bool)) (x : X) (b : Bool) :
+    side A x b ⊆ A :=
+  Finset.filter_subset _ _
+
+lemma above_sub {X : Type*} [LinearOrder X]
+    {A B : Finset (X → Bool)} {x : X}
+    (hAB : A ⊆ B) (hB : Above B x) : Above A x := by
+  intro u hu v hv y hy
+  exact hB u (hAB hu) v (hAB hv) y hy
+
+lemma side_card_sum {X : Type*}
+    (A : Finset (X → Bool)) (x : X) :
+    (side A x false).card + (side A x true).card = A.card := by
+  have hd : Disjoint (side A x false) (side A x true) := by
+    rw [Finset.disjoint_left]
+    intro v hv hw
+    exact ft (((mem_side A x false v).mp hv).2.symm.trans
+      ((mem_side A x true v).mp hw).2)
+  have hu : side A x false ∪ side A x true = A := by
+    ext v
+    simp only [Finset.mem_union, mem_side]
+    constructor
+    · rintro (⟨hv, _⟩ | ⟨hv, _⟩) <;> exact hv
+    · intro hv
+      rcases bool_cases (v x) with h | h
+      · exact Or.inl ⟨hv, h⟩
+      · exact Or.inr ⟨hv, h⟩
+  rw [← Finset.card_union_of_disjoint hd, hu]
+
+lemma bits_disjoint {X : Type*}
+    (x : X) (P Q : Finset (X → Bool))
+    (hP : ∀ v ∈ P, v x = false)
+    (hQ : ∀ v ∈ Q, v x = true) :
+    Disjoint P Q := by
+  rw [Finset.disjoint_left]
+  intro v hv hw
+  exact ft ((hP v hv).symm.trans (hQ v hw))
+
+lemma sides_union {X : Type*} [Fintype X]
+    (x : X) (P Q : Finset (X → Bool))
+    (hP : ∀ v ∈ P, v x = false)
+    (hQ : ∀ v ∈ Q, v x = true) :
+    side (P ∪ Q) x false = P ∧ side (P ∪ Q) x true = Q := by
+  constructor
+  · ext v
+    constructor
+    · intro hv
+      obtain ⟨hv, hb⟩ := (mem_side (P ∪ Q) x false v).mp hv
+      rcases Finset.mem_union.mp hv with hp | hq
+      · exact hp
+      · exact (ft (hb.symm.trans (hQ v hq))).elim
+    · intro hv
+      exact (mem_side (P ∪ Q) x false v).mpr
+        ⟨Finset.mem_union_left _ hv, hP v hv⟩
+  · ext v
+    constructor
+    · intro hv
+      obtain ⟨hv, hb⟩ := (mem_side (P ∪ Q) x true v).mp hv
+      rcases Finset.mem_union.mp hv with hp | hq
+      · exact (ft ((hP v hp).symm.trans hb)).elim
+      · exact hq
+    · intro hv
+      exact (mem_side (P ∪ Q) x true v).mpr
+        ⟨Finset.mem_union_right _ hv, hQ v hv⟩
+
+lemma choose_side {X : Type*}
+    (A : Finset (X → Bool)) (x : X) (b : Bool)
+    (n : ℕ) (hn : n ≤ (side A x b).card) :
+    ∃ P : Finset (X → Bool),
+      P ⊆ A ∧ P.card = n ∧ ∀ v ∈ P, v x = b := by
+  obtain ⟨P, hP, hPc⟩ := Finset.exists_subset_card_eq hn
+  exact ⟨P, hP.trans (side_subset A x b), hPc,
+    fun v hv => ((mem_side A x b v).mp (hP hv)).2⟩
+
+lemma split_of_pos {X : Type*} [LinearOrder X]
+    {A : Finset (X → Bool)} {x : X}
+    (hA : Above A x)
+    (hf : 0 < (side A x false).card)
+    (ht : 0 < (side A x true).card) : Split A x := by
+  obtain ⟨u, hu⟩ := Finset.card_pos.mp hf
+  obtain ⟨v, hv⟩ := Finset.card_pos.mp ht
+  obtain ⟨huA, huf⟩ := (mem_side A x false u).mp hu
+  obtain ⟨hvA, hvt⟩ := (mem_side A x true v).mp hv
+  exact ⟨hA, u, huA, v, hvA,
+    fun e => ft (huf.symm.trans (e.trans hvt))⟩
+
+lemma split_pos {X : Type*} [LinearOrder X]
+    {A : Finset (X → Bool)} {x : X}
+    (h : Split A x) :
+    0 < (side A x false).card ∧ 0 < (side A x true).card := by
+  obtain ⟨_, u, hu, v, hv, huv⟩ := h
+  rcases bool_ne (u x) (v x) huv with ⟨hf, ht⟩ | ⟨ht, hf⟩
+  · exact ⟨Finset.card_pos.mpr
+      ⟨u, (mem_side A x false u).mpr ⟨hu, hf⟩⟩,
+      Finset.card_pos.mpr
+      ⟨v, (mem_side A x true v).mpr ⟨hv, ht⟩⟩⟩
+  · exact ⟨Finset.card_pos.mpr
+      ⟨v, (mem_side A x false v).mpr ⟨hv, hf⟩⟩,
+      Finset.card_pos.mpr
+      ⟨u, (mem_side A x true u).mpr ⟨hu, ht⟩⟩⟩
+
+lemma split_unique {X : Type*} [LinearOrder X]
+    {A : Finset (X → Bool)} {x y : X}
+    (hx : Split A x) (hy : Split A y) : x = y := by
+  rcases lt_trichotomy x y with h | h | h
+  · obtain ⟨u, hu, v, hv, hne⟩ := hy.2
+    exact (hne (hx.1 u hu v hv y h)).elim
+  · exact h
+  · obtain ⟨u, hu, v, hv, hne⟩ := hx.2
+    exact (hne (hy.1 u hu v hv x h)).elim
+
+lemma top {X : Type*} [LinearOrder X] [Fintype X]
+    (K : Finset (X → Bool)) (hK : 2 ≤ K.card) :
+    ∃ x : X, Split K x := by
+  obtain ⟨u, hu, v, hv, huv⟩ := two_points K hK
+  let S : Finset X :=
+    Finset.univ.filter
+      (fun x => ∃ a ∈ K, ∃ b ∈ K, a x ≠ b x)
+  have hmem : ∀ x, x ∈ S ↔ ∃ a ∈ K, ∃ b ∈ K, a x ≠ b x := by
+    intro x
+    simp only [S, Finset.mem_filter, Finset.mem_univ, true_and]
+  have hS : S.Nonempty := by
+    by_contra hn
+    apply huv
+    funext x
+    by_contra hx
+    exact hn ⟨x, (hmem x).mpr ⟨u, hu, v, hv, hx⟩⟩
+  obtain ⟨x, hx, hmax⟩ :=
+    Finset.exists_max_image S (fun x : X => x) hS
+  refine ⟨x, ?_, (hmem x).mp hx⟩
+  intro a ha b hb y hxy
+  by_contra he
+  have hy := (hmem y).mpr ⟨a, ha, b, hb, he⟩
+  exact (not_le.mpr hxy) (hmax y hy)
+
+lemma cat_sub {X : Type*} [LinearOrder X]
+    {A B : Finset (X → Bool)} (hAB : A ⊆ B) (hB : Cat B) :
+    Cat A := by
+  intro D hD hc
+  exact hB D (hD.trans hAB) hc
+
+lemma cat_small {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) (hA : A.card ≤ 3) : Cat A := by
+  intro B hB hc
+  have := Finset.card_le_card hB
+  omega
+
+lemma cat_split {X : Type*} [LinearOrder X] [Fintype X]
+    {A : Finset (X → Bool)} {x : X}
+    (hcat : Cat A) (hag : Above A x) :
+    (side A x false).card ≤ 1 ∨ (side A x true).card ≤ 1 := by
+  by_contra hn
+  have hf : 2 ≤ (side A x false).card := by omega
+  have ht : 2 ≤ (side A x true).card := by omega
+  obtain ⟨P, hPA, hPc, hP⟩ := choose_side A x false 2 hf
+  obtain ⟨Q, hQA, hQc, hQ⟩ := choose_side A x true 2 ht
+  have hd := bits_disjoint x P Q hP hQ
+  have he := sides_union x P Q hP hQ
+  have hsub : P ∪ Q ⊆ A := Finset.union_subset hPA hQA
+  have hc : (P ∪ Q).card = 4 := by
+    rw [Finset.card_union_of_disjoint hd, hPc, hQc]
+  apply hcat (P ∪ Q) hsub hc
+  refine ⟨x, above_sub hsub hag, ?_, ?_⟩
+  · rw [he.1, hPc]
+  · rw [he.2, hQc]
+
+lemma bad_four {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) (hA : ¬ Cat A) :
+    ∃ D : Finset (X → Bool),
+      D ⊆ A ∧ D.card = 4 ∧ Balanced D := by
+  by_contra hn
+  apply hA
+  intro D hD hc hb
+  exact hn ⟨D, hD, hc, hb⟩
+
+lemma peel_at {X : Type*} [LinearOrder X] [Fintype X]
+    (K : Finset (X → Bool)) (x : X) (b : Bool)
+    (hag : Above K x) (hc : (side K x b).card = 1)
+    (hK : 2 ≤ K.card) :
+    ∃ z ∈ K,
+      (∀ w ∈ K.erase z,
+        w x ≠ z x ∧ ∀ y, x < y → w y = z y) ∧
+      (K.erase z).Nonempty := by
+  obtain ⟨z, he⟩ := Finset.card_eq_one.mp hc
+  have hzS : z ∈ side K x b := by
+    rw [he]
+    exact Finset.mem_singleton_self z
+  obtain ⟨hzK, hzb⟩ := (mem_side K x b z).mp hzS
+  refine ⟨z, hzK, ?_, ?_⟩
+  · intro w hw
+    obtain ⟨hwz, hwK⟩ := Finset.mem_erase.mp hw
+    refine ⟨?_, fun y hy => hag w hwK z hzK y hy⟩
+    intro hwx
+    have hwS : w ∈ side K x b :=
+      (mem_side K x b w).mpr ⟨hwK, hwx.trans hzb⟩
+    rw [he] at hwS
+    exact hwz (Finset.mem_singleton.mp hwS)
+  · apply Finset.card_pos.mp
+    have := Finset.card_erase_of_mem hzK
+    omega
+
+lemma peel {X : Type*} [LinearOrder X] [Fintype X]
+    (K : Finset (X → Bool)) (hcat : Cat K) (hK : 2 ≤ K.card) :
+    ∃ x : X, ∃ z ∈ K,
+      (∀ w ∈ K.erase z,
+        w x ≠ z x ∧ ∀ y, x < y → w y = z y) ∧
+      (K.erase z).Nonempty := by
+  obtain ⟨x, hx⟩ := top K hK
+  have hp := split_pos hx
+  rcases cat_split hcat hx.1 with hf | ht
+  · obtain ⟨z, hz, hr, hn⟩ :=
+      peel_at K x false hx.1 (by omega) hK
+    exact ⟨x, z, hz, hr, hn⟩
+  · obtain ⟨z, hz, hr, hn⟩ :=
+      peel_at K x true hx.1 (by omega) hK
+    exact ⟨x, z, hz, hr, hn⟩
+
+lemma above_insert {X : Type*} [LinearOrder X] [Fintype X]
+    (z : X → Bool) (A : Finset (X → Bool)) (x : X)
+    (hr : ∀ w ∈ A, ∀ y, x < y → w y = z y) :
+    Above (insert z A) x := by
+  have he : ∀ w ∈ insert z A, ∀ y, x < y → w y = z y := by
+    intro w hw y hy
+    rcases Finset.mem_insert.mp hw with hw | hw
+    · rw [hw]
+    · exact hr w hw y hy
+  intro u hu v hv y hy
+  exact (he u hu y hy).trans (he v hv y hy).symm
+
+lemma cat_insert {X : Type*} [LinearOrder X] [Fintype X]
+    (z : X → Bool) (A : Finset (X → Bool)) (x : X)
+    (hr : ∀ w ∈ A, w x ≠ z x ∧ ∀ y, x < y → w y = z y)
+    (hc : Cat A) : Cat (insert z A) := by
+  intro B hB hBc hbal
+  by_cases hzB : z ∈ B
+  · obtain ⟨y, hag, hf, ht⟩ := hbal
+    have hrestpos : 0 < (B.erase z).card := by
+      have := Finset.card_erase_of_mem hzB
+      omega
+    obtain ⟨w, hw⟩ := Finset.card_pos.mp hrestpos
+    obtain ⟨hwz, hwB⟩ := Finset.mem_erase.mp hw
+    have hwA : w ∈ A := by
+      rcases Finset.mem_insert.mp (hB hwB) with he | he
+      · exact (hwz he).elim
+      · exact he
+    have hx : Split B x :=
+      ⟨above_sub hB (above_insert z A x (fun v hv => (hr v hv).2)),
+        w, hwB, z, hzB, (hr w hwA).1⟩
+    have hy : Split B y := split_of_pos hag (by omega) (by omega)
+    have hyx : y = x := split_unique hy hx
+    subst y
+    have hside : side B x (z x) ⊆ {z} := by
+      intro v hv
+      obtain ⟨hvB, hvx⟩ := (mem_side B x (z x) v).mp hv
+      rcases Finset.mem_insert.mp (hB hvB) with he | he
+      · exact Finset.mem_singleton.mpr he
+      · exact ((hr v he).1 hvx).elim
+    have hsidec : (side B x (z x)).card ≤ 1 := by
+      simpa only [Finset.card_singleton] using Finset.card_le_card hside
+    rcases bool_cases (z x) with he | he
+    · rw [he] at hsidec
+      omega
+    · rw [he] at hsidec
+      omega
+  · have hBA : B ⊆ A := by
+      intro v hv
+      rcases Finset.mem_insert.mp (hB hv) with he | he
+      · exact (hzB (he ▸ hv)).elim
+      · exact he
+    exact hc B hBA hBc hbal
+
+noncomputable def levels {X : Type*} [LinearOrder X] [Fintype X]
+    (A : Finset (X → Bool)) : Finset X :=
+  Finset.univ.filter
+    (fun x => ∃ u ∈ A, ∃ v ∈ A,
+      u x ≠ v x ∧ ∀ y, x < y → u y = v y)
+
+lemma mem_levels {X : Type*} [LinearOrder X] [Fintype X]
+    (A : Finset (X → Bool)) (x : X) :
+    x ∈ levels A ↔ ∃ u ∈ A, ∃ v ∈ A,
+      u x ≠ v x ∧ ∀ y, x < y → u y = v y := by
+  unfold levels
+  rw [Finset.mem_filter]
+  exact ⟨fun h => h.2, fun h => ⟨Finset.mem_univ x, h⟩⟩
+
+lemma levels_mono {X : Type*} [LinearOrder X] [Fintype X]
+    {A B : Finset (X → Bool)} (hAB : A ⊆ B) :
+    levels A ⊆ levels B := by
+  intro x hx
+  obtain ⟨u, hu, v, hv, h⟩ := (mem_levels A x).mp hx
+  exact (mem_levels B x).mpr ⟨u, hAB hu, v, hAB hv, h⟩
+
+lemma levels_singleton {X : Type*} [LinearOrder X] [Fintype X]
+    (a : X → Bool) : levels ({a} : Finset (X → Bool)) = ∅ := by
+  apply Finset.subset_empty.mp
+  intro x hx
+  obtain ⟨u, hu, v, hv, hne, _⟩ := (mem_levels {a} x).mp hx
+  exact (hne (by
+    rw [Finset.mem_singleton.mp hu, Finset.mem_singleton.mp hv])).elim
+
+lemma level_unique {X : Type*} [LinearOrder X]
+    (u v : X → Bool) (x y : X)
+    (hx : u x ≠ v x) (hax : ∀ z, x < z → u z = v z)
+    (hy : u y ≠ v y) (hay : ∀ z, y < z → u z = v z) :
+    y = x := by
+  rcases lt_trichotomy x y with h | h | h
+  · exact (hy (hax y h)).elim
+  · exact h.symm
+  · exact (hx (hay x h)).elim
+
+lemma levels_insert_sub {X : Type*} [LinearOrder X] [Fintype X]
+    (z : X → Bool) (A : Finset (X → Bool)) (x : X)
+    (hr : ∀ w ∈ A, w x ≠ z x ∧ ∀ y, x < y → w y = z y) :
+    levels (insert z A) ⊆ insert x (levels A) := by
+  intro y hy
+  obtain ⟨u, hu, v, hv, hne, hag⟩ :=
+    (mem_levels (insert z A) y).mp hy
+  rcases Finset.mem_insert.mp hu with hu | hu
+  · rcases Finset.mem_insert.mp hv with hv | hv
+    · exact (hne (by rw [hu, hv])).elim
+    · have hyx : y = x :=
+        level_unique v z x y (hr v hv).1 (hr v hv).2
+          (by rw [← hu]; exact fun h => hne h.symm)
+          (by intro w hw; rw [← hu]; exact (hag w hw).symm)
+      rw [hyx]
+      exact Finset.mem_insert_self _ _
+  · rcases Finset.mem_insert.mp hv with hv | hv
+    · have hyx : y = x :=
+        level_unique u z x y (hr u hu).1 (hr u hu).2
+          (by rw [← hv]; exact hne)
+          (by intro w hw; rw [← hv]; exact hag w hw)
+      rw [hyx]
+      exact Finset.mem_insert_self _ _
+    · exact Finset.mem_insert_of_mem
+        ((mem_levels A y).mpr ⟨u, hu, v, hv, hne, hag⟩)
+
+lemma levels_insert_sup {X : Type*} [LinearOrder X] [Fintype X]
+    (z : X → Bool) (A : Finset (X → Bool)) (x : X)
+    (hr : ∀ w ∈ A, w x ≠ z x ∧ ∀ y, x < y → w y = z y)
+    (hne : A.Nonempty) :
+    insert x (levels A) ⊆ levels (insert z A) := by
+  intro y hy
+  rcases Finset.mem_insert.mp hy with hy | hy
+  · obtain ⟨w, hw⟩ := hne
+    rw [hy]
+    exact (mem_levels (insert z A) x).mpr
+      ⟨w, Finset.mem_insert_of_mem hw, z,
+        Finset.mem_insert_self _ _, (hr w hw).1, (hr w hw).2⟩
+  · exact levels_mono (Finset.subset_insert z A) hy
+
+lemma level_not_mem {X : Type*} [LinearOrder X] [Fintype X]
+    (z : X → Bool) (A : Finset (X → Bool)) (x : X)
+    (hr : ∀ w ∈ A, w x ≠ z x ∧ ∀ y, x < y → w y = z y) :
+    x ∉ levels A := by
+  intro hx
+  obtain ⟨u, hu, v, hv, hne, _⟩ := (mem_levels A x).mp hx
+  exact hne (bool_eq (u x) (z x) (v x) (hr u hu).1 (hr v hv).1)
+
+lemma levels_insert {X : Type*} [LinearOrder X] [Fintype X]
+    (z : X → Bool) (A : Finset (X → Bool)) (x : X)
+    (hr : ∀ w ∈ A, w x ≠ z x ∧ ∀ y, x < y → w y = z y)
+    (hne : A.Nonempty) :
+    levels (insert z A) = insert x (levels A) :=
+  Finset.Subset.antisymm
+    (levels_insert_sub z A x hr) (levels_insert_sup z A x hr hne)
+
+lemma cat_card {X : Type*} [LinearOrder X] [Fintype X] :
+    ∀ n : ℕ, ∀ A : Finset (X → Bool),
+      A.card ≤ n → Cat A → A.card ≤ (levels A).card + 1 := by
+  intro n
+  induction n with
+  | zero =>
+      intro A hA _
+      omega
+  | succ n ih =>
+      intro A hAn hc
+      by_cases hsmall : A.card ≤ 1
+      · omega
+      obtain ⟨x, z, hz, hr, hne⟩ := peel A hc (by omega)
+      have hs := levels_insert_sup z (A.erase z) x hr hne
+      rw [Finset.insert_erase hz] at hs
+      have hxn := level_not_mem z (A.erase z) x hr
+      have he := Finset.card_erase_of_mem hz
+      have hh := Finset.card_le_card hs
+      rw [Finset.card_insert_of_notMem hxn] at hh
+      have hi := ih (A.erase z) (by omega)
+        (cat_sub (Finset.erase_subset z A) hc)
+      omega
+
+lemma realise {X : Type*} [LinearOrder X] [Fintype X] :
+    ∀ n : ℕ, ∀ A : Finset (X → Bool),
+      A.card ≤ n → Cat A → A.Nonempty →
+      ∀ D : Finset X, D ⊆ levels A →
+        ∃ B : Finset (X → Bool),
+          B ⊆ A ∧ B.card = D.card + 1 ∧ levels B = D := by
+  intro n
+  induction n with
+  | zero =>
+      intro A hA _ hne D _
+      have := Finset.card_pos.mpr hne
+      omega
+  | succ n ih =>
+      intro A hAn hc hne D hD
+      by_cases hDe : D = ∅
+      · obtain ⟨z, hz⟩ := hne
+        refine ⟨{z}, Finset.singleton_subset_iff.mpr hz, ?_, ?_⟩
+        · simp [hDe]
+        · rw [hDe]
+          exact levels_singleton z
+      obtain ⟨d, hd⟩ := Finset.nonempty_iff_ne_empty.mpr hDe
+      obtain ⟨u, hu, v, hv, huv, _⟩ :=
+        (mem_levels A d).mp (hD hd)
+      have htwo : 2 ≤ A.card := by
+        have hneuv : u ≠ v := fun h => huv (by rw [h])
+        have hsub : ({u, v} : Finset (X → Bool)) ⊆ A :=
+          Finset.insert_subset hu (Finset.singleton_subset_iff.mpr hv)
+        have hh := Finset.card_le_card hsub
+        rw [Finset.card_pair hneuv] at hh
+        exact hh
+      obtain ⟨x, z, hz, hr, hrest⟩ := peel A hc htwo
+      have hcard : (A.erase z).card ≤ n := by
+        have := Finset.card_erase_of_mem hz
+        omega
+      have hcat : Cat (A.erase z) :=
+        cat_sub (Finset.erase_subset z A) hc
+      have hsub : levels A ⊆ insert x (levels (A.erase z)) := by
+        have hh := levels_insert_sub z (A.erase z) x hr
+        rw [Finset.insert_erase hz] at hh
+        exact hh
+      by_cases hxD : x ∈ D
+      · have hD' : D.erase x ⊆ levels (A.erase z) := by
+          intro y hy
+          obtain ⟨hyx, hyD⟩ := Finset.mem_erase.mp hy
+          rcases Finset.mem_insert.mp (hsub (hD hyD)) with he | he
+          · exact (hyx he).elim
+          · exact he
+        obtain ⟨B, hB, hBc, hBd⟩ :=
+          ih (A.erase z) hcard hcat hrest (D.erase x) hD'
+        have hzB : z ∉ B :=
+          fun h => (Finset.mem_erase.mp (hB h)).1 rfl
+        have hBn : B.Nonempty := Finset.card_pos.mp (by omega)
+        refine ⟨insert z B,
+          Finset.insert_subset hz
+            (hB.trans (Finset.erase_subset z A)), ?_, ?_⟩
+        · rw [Finset.card_insert_of_notMem hzB, hBc]
+          have := Finset.card_erase_of_mem hxD
+          have := Finset.card_pos.mpr ⟨x, hxD⟩
+          omega
+        · rw [levels_insert z B x
+            (fun w hw => hr w (hB hw)) hBn, hBd]
+          exact Finset.insert_erase hxD
+      · have hD' : D ⊆ levels (A.erase z) := by
+          intro y hy
+          rcases Finset.mem_insert.mp (hsub (hD hy)) with he | he
+          · exact (hxD (he ▸ hy)).elim
+          · exact he
+        obtain ⟨B, hB, hBc, hBd⟩ :=
+          ih (A.erase z) hcard hcat hrest D hD'
+        exact ⟨B, hB.trans (Finset.erase_subset z A), hBc, hBd⟩
+
+def Red {X : Type*} [LinearOrder X]
+    (A : Finset (X → Bool)) : Prop :=
+  ∃ x : X, Split A x ∧ (side A x false).card % 2 = 0
+
+noncomputable def color {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C)
+    (A : Finset (X → Bool)) : C :=
+  if Cat A then χ (levels A) else if Red A then a else b
+
+lemma color_cat {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C)
+    (A : Finset (X → Bool)) (hc : Cat A) :
+    color a b χ A = χ (levels A) := by
+  unfold color
+  rw [if_pos hc]
+
+lemma color_noncat {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C)
+    (A : Finset (X → Bool)) (hc : ¬ Cat A) :
+    color a b χ A = a ∨ color a b χ A = b := by
+  unfold color
+  rw [if_neg hc]
+  by_cases h : Red A
+  · rw [if_pos h]
+    exact Or.inl rfl
+  · rw [if_neg h]
+    exact Or.inr rfl
+
+lemma color_split {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C)
+    (A : Finset (X → Bool)) (hc : ¬ Cat A)
+    (x : X) (hx : Split A x) :
+    color a b χ A =
+      if (side A x false).card % 2 = 0 then a else b := by
+  unfold color
+  rw [if_neg hc]
+  by_cases he : (side A x false).card % 2 = 0
+  · have hr : Red A := ⟨x, hx, he⟩
+    rw [if_pos hr, if_pos he]
+  · have hr : ¬ Red A := by
+      rintro ⟨y, hy, hey⟩
+      have hxy : y = x := split_unique hy hx
+      subst y
+      exact he hey
+    rw [if_neg hr, if_neg he]
+
+lemma cat_bound {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C) (i : C) (s : ℕ)
+    (hχ : Solon.NoMono χ 4 s i)
+    (K : Finset (X → Bool))
+    (hm : ∀ A : Finset (X → Bool),
+      A ⊆ K → A.card = 5 → color a b χ A = i)
+    (D : Finset (X → Bool)) (hDK : D ⊆ K) (hc : Cat D) :
+    D.card ≤ s := by
+  by_contra hbig
+  have hh := cat_card D.card D (le_refl _) hc
+  obtain ⟨S, hS, hSc⟩ :=
+    Finset.exists_subset_card_eq
+      (show s ≤ (levels D).card by omega)
+  obtain ⟨T, hT, hne⟩ := hχ S hSc
+  obtain ⟨hTS, hTc⟩ := Finset.mem_powersetCard.mp hT
+  have hDn : D.Nonempty := Finset.card_pos.mp (by omega)
+  obtain ⟨A, hAD, hAc, hAt⟩ :=
+    realise D.card D (le_refl _) hc hDn T (hTS.trans hS)
+  have hcol := hm A (hAD.trans hDK) (by omega)
+  rw [color_cat a b χ A (cat_sub hAD hc), hAt] at hcol
+  exact hne hcol
+
+lemma pattern_union {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C) (i : C)
+    (K : Finset (X → Bool)) (x : X) (hag : Above K x)
+    (hm : ∀ A : Finset (X → Bool),
+      A ⊆ K → A.card = 5 → color a b χ A = i)
+    (P Q : Finset (X → Bool))
+    (hPK : P ⊆ K) (hQK : Q ⊆ K)
+    (hP : ∀ v ∈ P, v x = false)
+    (hQ : ∀ v ∈ Q, v x = true)
+    (hPn : 0 < P.card) (hQn : 0 < Q.card)
+    (hcard : P.card + Q.card = 5)
+    (hnc : ¬ Cat (P ∪ Q)) :
+    i = if P.card % 2 = 0 then a else b := by
+  have hsub : P ∪ Q ⊆ K := Finset.union_subset hPK hQK
+  have he := sides_union x P Q hP hQ
+  have hc : (P ∪ Q).card = 5 := by
+    rw [Finset.card_union_of_disjoint (bits_disjoint x P Q hP hQ)]
+    exact hcard
+  have hx : Split (P ∪ Q) x :=
+    split_of_pos (above_sub hsub hag)
+      (by rw [he.1]; exact hPn)
+      (by rw [he.2]; exact hQn)
+  have hp := color_split a b χ (P ∪ Q) hnc x hx
+  rw [he.1] at hp
+  exact (hm (P ∪ Q) hsub hc).symm.trans hp
+
+lemma pattern_two_three {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C) (i : C)
+    (K : Finset (X → Bool)) (x : X) (hag : Above K x)
+    (hm : ∀ A : Finset (X → Bool),
+      A ⊆ K → A.card = 5 → color a b χ A = i)
+    (hf : 2 ≤ (side K x false).card)
+    (ht : 3 ≤ (side K x true).card) : i = a := by
+  obtain ⟨P, hPK, hPc, hP⟩ := choose_side K x false 2 hf
+  obtain ⟨Q, hQK, hQc, hQ⟩ := choose_side K x true 3 ht
+  have he := sides_union x P Q hP hQ
+  have hnc : ¬ Cat (P ∪ Q) := by
+    intro hc
+    have hh := cat_split hc
+      (above_sub (Finset.union_subset hPK hQK) hag)
+    rw [he.1, he.2, hPc, hQc] at hh
+    omega
+  have hh := pattern_union a b χ i K x hag hm P Q
+    hPK hQK hP hQ (by omega) (by omega) (by omega) hnc
+  simpa [hPc] using hh
+
+lemma pattern_three_two {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (χ : Finset X → C) (i : C)
+    (K : Finset (X → Bool)) (x : X) (hag : Above K x)
+    (hm : ∀ A : Finset (X → Bool),
+      A ⊆ K → A.card = 5 → color a b χ A = i)
+    (hf : 3 ≤ (side K x false).card)
+    (ht : 2 ≤ (side K x true).card) : i = b := by
+  obtain ⟨P, hPK, hPc, hP⟩ := choose_side K x false 3 hf
+  obtain ⟨Q, hQK, hQc, hQ⟩ := choose_side K x true 2 ht
+  have he := sides_union x P Q hP hQ
+  have hnc : ¬ Cat (P ∪ Q) := by
+    intro hc
+    have hh := cat_split hc
+      (above_sub (Finset.union_subset hPK hQK) hag)
+    rw [he.1, he.2, hPc, hQc] at hh
+    omega
+  have hh := pattern_union a b χ i K x hag hm P Q
+    hPK hQK hP hQ (by omega) (by omega) (by omega) hnc
+  simpa [hPc] using hh
+
+lemma close_split {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (hab : a ≠ b) (χ : Finset X → C) (i : C)
+    (K : Finset (X → Bool)) (x : X) (hag : Above K x)
+    (hm : ∀ A : Finset (X → Bool),
+      A ⊆ K → A.card = 5 → color a b χ A = i)
+    (hf : 2 ≤ (side K x false).card)
+    (ht : 2 ≤ (side K x true).card) :
+    ∃ D : Finset (X → Bool),
+      D ⊆ K ∧ Cat D ∧ K.card ≤ D.card + 1 := by
+  have hsum := side_card_sum K x
+  by_cases hf3 : 3 ≤ (side K x false).card
+  · have hiB := pattern_three_two a b χ i K x hag hm hf3 ht
+    have ht2 : (side K x true).card = 2 := by
+      by_contra hn
+      have hiA := pattern_two_three a b χ i K x hag hm hf (by omega)
+      exact hab (hiA.symm.trans hiB)
+    have hcL : Cat (side K x false) := by
+      by_contra hn
+      obtain ⟨D, hD, hDc, hDb⟩ := bad_four (side K x false) hn
+      obtain ⟨Q, hQK, hQc, hQ⟩ :=
+        choose_side K x true 1 (by omega)
+      have hDK : D ⊆ K := hD.trans (side_subset K x false)
+      have hDf : ∀ v ∈ D, v x = false :=
+        fun v hv => ((mem_side K x false v).mp (hD hv)).2
+      have hnc : ¬ Cat (D ∪ Q) := by
+        intro hc
+        exact hc D (fun v hv => Finset.mem_union_left _ hv) hDc hDb
+      have hh := pattern_union a b χ i K x hag hm D Q
+        hDK hQK hDf hQ (by omega) (by omega) (by omega) hnc
+      have hiA : i = a := by simpa [hDc] using hh
+      exact hab (hiA.symm.trans hiB)
+    obtain ⟨z, hz⟩ := Finset.card_pos.mp
+      (show 0 < (side K x true).card by omega)
+    obtain ⟨hzK, hzt⟩ := (mem_side K x true z).mp hz
+    have hzL : z ∉ side K x false := by
+      intro hz'
+      exact ft (((mem_side K x false z).mp hz').2.symm.trans hzt)
+    have hr : ∀ w ∈ side K x false,
+        w x ≠ z x ∧ ∀ y, x < y → w y = z y := by
+      intro w hw
+      obtain ⟨hwK, hwf⟩ := (mem_side K x false w).mp hw
+      exact ⟨fun he => ft (hwf.symm.trans (he.trans hzt)),
+        fun y hy => hag w hwK z hzK y hy⟩
+    refine ⟨insert z (side K x false),
+      Finset.insert_subset hzK (side_subset K x false),
+      cat_insert z (side K x false) x hr hcL, ?_⟩
+    rw [Finset.card_insert_of_notMem hzL]
+    omega
+  · have hf2 : (side K x false).card = 2 := by omega
+    have hcR : Cat (side K x true) := by
+      by_contra hn
+      obtain ⟨D, hD, hDc, hDb⟩ := bad_four (side K x true) hn
+      have hDcR := Finset.card_le_card hD
+      have hiA := pattern_two_three a b χ i K x hag hm hf (by omega)
+      obtain ⟨P, hPK, hPc, hP⟩ :=
+        choose_side K x false 1 (by omega)
+      have hDK : D ⊆ K := hD.trans (side_subset K x true)
+      have hDt : ∀ v ∈ D, v x = true :=
+        fun v hv => ((mem_side K x true v).mp (hD hv)).2
+      have hnc : ¬ Cat (P ∪ D) := by
+        intro hc
+        exact hc D (fun v hv => Finset.mem_union_right _ hv) hDc hDb
+      have hh := pattern_union a b χ i K x hag hm P D
+        hPK hDK hP hDt (by omega) (by omega) (by omega) hnc
+      have hiB : i = b := by simpa [hPc] using hh
+      exact hab (hiA.symm.trans hiB)
+    obtain ⟨z, hz⟩ := Finset.card_pos.mp
+      (show 0 < (side K x false).card by omega)
+    obtain ⟨hzK, hzf⟩ := (mem_side K x false z).mp hz
+    have hzR : z ∉ side K x true := by
+      intro hz'
+      exact ft (hzf.symm.trans ((mem_side K x true z).mp hz').2)
+    have hr : ∀ w ∈ side K x true,
+        w x ≠ z x ∧ ∀ y, x < y → w y = z y := by
+      intro w hw
+      obtain ⟨hwK, hwt⟩ := (mem_side K x true w).mp hw
+      exact ⟨fun he => ft (hzf.symm.trans (he.symm.trans hwt)),
+        fun y hy => hag w hwK z hzK y hy⟩
+    refine ⟨insert z (side K x true),
+      Finset.insert_subset hzK (side_subset K x true),
+      cat_insert z (side K x true) x hr hcR, ?_⟩
+    rw [Finset.card_insert_of_notMem hzR]
+    omega
+
+lemma close_cat {X C : Type*} [LinearOrder X] [Fintype X]
+    (a b : C) (hab : a ≠ b) (χ : Finset X → C) (i : C) :
+    ∀ n : ℕ, ∀ K : Finset (X → Bool),
+      K.card ≤ n →
+      (∀ A : Finset (X → Bool),
+        A ⊆ K → A.card = 5 → color a b χ A = i) →
+      ∃ D : Finset (X → Bool),
+        D ⊆ K ∧ Cat D ∧ K.card ≤ D.card + 1 := by
+  intro n
+  induction n with
+  | zero =>
+      intro K hK _
+      exact ⟨K, Finset.Subset.refl K, cat_small K (by omega), by omega⟩
+  | succ n ih =>
+      intro K hKn hm
+      by_cases hsmall : K.card ≤ 1
+      · exact ⟨K, Finset.Subset.refl K,
+          cat_small K (by omega), by omega⟩
+      obtain ⟨x, hx⟩ := top K (by omega)
+      have hp := split_pos hx
+      by_cases hthin :
+          (side K x false).card ≤ 1 ∨ (side K x true).card ≤ 1
+      · have hex : ∃ z ∈ K,
+            (∀ w ∈ K.erase z,
+              w x ≠ z x ∧ ∀ y, x < y → w y = z y) ∧
+            (K.erase z).Nonempty := by
+          rcases hthin with hf | ht
+          · exact peel_at K x false hx.1 (by omega) (by omega)
+          · exact peel_at K x true hx.1 (by omega) (by omega)
+        obtain ⟨z, hz, hr, _⟩ := hex
+        have he := Finset.card_erase_of_mem hz
+        obtain ⟨D, hD, hcD, hDc⟩ :=
+          ih (K.erase z) (by omega)
+            (fun A hA hc =>
+              hm A (hA.trans (Finset.erase_subset z K)) hc)
+        have hzD : z ∉ D :=
+          fun h => (Finset.mem_erase.mp (hD h)).1 rfl
+        refine ⟨insert z D,
+          Finset.insert_subset hz
+            (hD.trans (Finset.erase_subset z K)),
+          cat_insert z D x (fun w hw => hr w (hD hw)) hcD, ?_⟩
+        rw [Finset.card_insert_of_notMem hzD]
+        omega
+      · exact close_split a b hab χ i K x hx.1 hm
+          (by omega) (by omega)
+
+end AdditiveFive
+
+theorem stepping_up_four_to_five_additive_palette :
+    ∀ {X C : Type*} [LinearOrder X] [Fintype X] [DecidableEq C]
+      (a b : C), a ≠ b →
+      ∀ (s : C → ℕ), (∀ i, 4 ≤ s i) →
+      ∀ χ : Finset X → C,
+        (∀ i, Solon.NoMono χ 4 (s i) i) →
+        ∃ ψ : Finset (X → Bool) → C,
+          ∀ i, Solon.NoMono ψ 5 (additiveFiveThreshold a b s i) i := by
+  intro X C _ _ _ a b hab s hs χ hχ
+  classical
+  refine ⟨AdditiveFive.color a b χ, ?_⟩
+  intro i K hK
+  by_contra hn
+  have hm : ∀ A : Finset (X → Bool),
+      A ⊆ K → A.card = 5 →
+      AdditiveFive.color a b χ A = i := by
+    intro A hA hc
+    by_contra hne
+    exact hn ⟨A, Finset.mem_powersetCard.mpr ⟨hA, hc⟩, hne⟩
+  by_cases hi : i = a ∨ i = b
+  · have hKc : K.card = s i + 2 := by
+      simpa [additiveFiveThreshold, hi] using hK
+    obtain ⟨D, hDK, hcD, hDc⟩ :=
+      AdditiveFive.close_cat a b hab χ i K.card K (le_refl _) hm
+    have hb :=
+      AdditiveFive.cat_bound a b χ i (s i) (hχ i) K hm D hDK hcD
+    omega
+  · have hKc : K.card = s i + 1 := by
+      simpa [additiveFiveThreshold, hi] using hK
+    have hcK : AdditiveFive.Cat K := by
+      intro D hDK hDc hDb
+      have hsi := hs i
+      obtain ⟨A, hDA, hAK, hAc⟩ :=
+        AdditiveFive.extend D K 5 hDK (by omega) (by omega)
+      have hnc : ¬ AdditiveFive.Cat A := by
+        intro hc
+        exact hc D hDA hDc hDb
+      rcases AdditiveFive.color_noncat a b χ A hnc with ha | hb
+      · exact hi (Or.inl ((hm A hAK hAc).symm.trans ha))
+      · exact hi (Or.inr ((hm A hAK hAc).symm.trans hb))
+    have hb :=
+      AdditiveFive.cat_bound a b χ i (s i) (hχ i) K hm K
+        (Finset.Subset.refl K) hcK
+    omega
+

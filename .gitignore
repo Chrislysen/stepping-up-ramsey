@@ -1,0 +1,19 @@
+# Lake and Lean build output
+.lake/
+build/
+*.olean
+*.ilean
+
+# Python
+__pycache__/
+*.pyc
+
+# Compiled checkers and their generated input
+colourings/verify_affine
+colourings/verify_affine.exe
+colourings/verify_projective
+colourings/verify_projective.exe
+colourings/tau858.txt
+*.o
+*.obj
+*.exe

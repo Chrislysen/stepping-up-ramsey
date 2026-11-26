@@ -1,0 +1,19 @@
+name: Lean proofs
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # Installs elan and the toolchain of lean-toolchain, runs `lake exe cache get`
+      # (Mathlib is a dependency) and then `lake build`.
+      - uses: leanprover/lean-action@v1

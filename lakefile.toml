@@ -1,0 +1,11 @@
+name = "proofs"
+defaultTargets = ["Proofs"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.35.0"
+
+[[lean_lib]]
+name = "Proofs"
+roots = ["Proofs.Defs", "Proofs.stepping_up_four_to_five_additive_palette", "Proofs.parity_stepping_up_from_five", "Proofs.near_caterpillar_stepping_up_from_five", "Proofs.split_window_stepping_up", "Proofs.tri_fallback_stepping_up", "Proofs.six_uniform_small_threshold_step", "Proofs.six_uniform_mixed_small_threshold_step", "Proofs.rank_gap_stepping_up_sharp_red", "Proofs.odd_split_stepping_up", "Proofs.odd_split_stepping_up_sharp", "Proofs.odd_split_sharpness_example", "Proofs.six_uniform_sharp_thin_split", "Proofs.seven_uniform_nine_step", "Proofs.seven_uniform_eleven_step", "Proofs.stepping_up_caterpillar", "Proofs.stepping_up_two_colourings", "Proofs.stepping_up_one_fallback_all_palettes", "Proofs.caterpillar_palette_all_uniformities"]

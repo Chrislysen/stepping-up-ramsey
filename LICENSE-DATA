@@ -1,0 +1,10 @@
+Copyright (c) 2026 Christian Lysenstøen
+
+The colouring files of this repository (colourings/*.json and colourings/*.csv)
+and the text of README.md and colourings/README.md are licensed under the
+Creative Commons Attribution 4.0 International License (CC BY 4.0):
+
+    https://creativecommons.org/licenses/by/4.0/
+
+The code (the Lean files and the Lake configuration, the C, C++ and Python
+programs, and the workflows) is licensed under the MIT License; see LICENSE.
